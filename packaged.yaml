@@ -1,0 +1,3007 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Mission Insights Enrichment Engine (qs-1t54183nf)
+Transform: AWS::Serverless-2016-10-31
+Metadata:
+  cfn-lint:
+    config:
+      ignore_checks:
+      - W9001
+      - E9007
+Globals:
+  Function:
+    Tags:
+      Team: AI and Data Insights
+      Project: mi-media engine
+Resources:
+  meb:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: me-bus
+    Metadata:
+      SamResourceId: meb
+  mebDiscovery:
+    Type: AWS::EventSchemas::Discoverer
+    Properties:
+      SourceArn:
+        Fn::GetAtt:
+        - meb
+        - Arn
+      Description: Media Enrichment Schema Discovery
+    Metadata:
+      SamResourceId: mebDiscovery
+  mebArchive:
+    Type: AWS::Events::Archive
+    Properties:
+      ArchiveName:
+        Ref: meb
+      Description: Media Enrichment Archive
+      RetentionDays: 1
+      SourceArn:
+        Fn::GetAtt:
+        - meb
+        - Arn
+    Metadata:
+      SamResourceId: mebArchive
+  ingestion:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/ingestion.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 10240
+      Timeout: 30
+      Description: Enrichment Engine-Lambda function to ingest data into the enrichment
+        engine
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      - DynamoDBCrudPolicy:
+          TableName: '*'
+      - S3CrudPolicy:
+          BucketName: '*'
+      - EventBridgePutEventsPolicy:
+          EventBusName:
+            Ref: meb
+      - SQSPollerPolicy:
+          QueueName:
+            Fn::GetAtt:
+            - ingestQueue
+            - QueueName
+      Environment:
+        Variables:
+          AssetTable:
+            Ref: Assets
+          AssetProcessingTable:
+            Ref: AssetProcessing
+          AssetAttributeTable:
+            Ref: AssetAttributes
+          AssetHistoryTable:
+            Ref: AssetHistory
+          AssetFormatsTable:
+            Ref: AssetFormats
+          AssetEnrichmentsTable:
+            Ref: AssetEnrichments
+          SearchTable:
+            Ref: SearchTable
+          SearchAggregateTable:
+            Ref: SearchAggregateTable
+          ErrorTable:
+            Ref: ErrorTable
+          EventBus_Name:
+            Ref: meb
+          S3txtract:
+            Ref: S3txtract
+          S3txtractA:
+            Ref: S3txtractA
+          S3txtPlain:
+            Ref: S3txtPlain
+          S3NlpTop:
+            Ref: S3NlpTop
+          S3NlpNer:
+            Ref: S3NlpNer
+          S3NlpLang:
+            Ref: S3NlpLang
+          S3NlpKp:
+            Ref: S3NlpKp
+          S3Assets:
+            Ref: S3Assets
+          S3Kendra:
+            Ref: S3Kendra
+          S3Translate:
+            Ref: S3Translate
+          S3Transcribe:
+            Ref: S3Transcribe
+          S3RkTxtDet:
+            Ref: S3RkTxtDet
+          S3RkSegDet:
+            Ref: S3RkSegDet
+          S3RkPplTrc:
+            Ref: S3RkPplTrc
+          S3RkLblDet:
+            Ref: S3RkLblDet
+          S3RkFacSrch:
+            Ref: S3RkFacSrch
+          S3RkFacDet:
+            Ref: S3RkFacDet
+          S3RkCeleb:
+            Ref: S3RkCeleb
+          S3RkMod:
+            Ref: S3RkMod
+          S3AzureDescrImg:
+            Ref: S3AzureDescrImg
+          ingestQueueUrl:
+            Ref: ingestQueue
+      Events:
+        ingestEvent:
+          Type: SQS
+          Properties:
+            BatchSize: 1
+            Enabled: true
+            MaximumBatchingWindowInSeconds: 5
+            Queue:
+              Fn::GetAtt:
+              - ingestQueue
+              - Arn
+    Metadata:
+      SamResourceId: ingestion
+  textractStart:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/textractStart.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 128
+      Timeout: 120
+      Description: Enrichment Engine-Starts Textract Async
+      Environment:
+        Variables:
+          AssetTable:
+            Ref: Assets
+          AssetProcessingTable:
+            Ref: AssetProcessing
+          AssetAttributeTable:
+            Ref: AssetAttributes
+          AssetHistoryTable:
+            Ref: AssetHistory
+          AssetFormatsTable:
+            Ref: AssetFormats
+          ErrorTable:
+            Ref: ErrorTable
+          EventBus_Name:
+            Ref: meb
+          S3txtract:
+            Ref: S3txtract
+          S3txtractA:
+            Ref: S3txtractA
+          S3Assets:
+            Ref: S3Assets
+          TextractSNSarn:
+            Fn::GetAtt:
+            - TextractSNSRl
+            - Arn
+          TextractSNSTopicArn:
+            Ref: AmazonTextractSNS
+          TextractASNSTopicArn:
+            Ref: AmazonTextractASNS
+          S3txtractarn:
+            Fn::GetAtt:
+            - S3txtract
+            - Arn
+          S3txtractAarn:
+            Fn::GetAtt:
+            - S3txtractA
+            - Arn
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: Assets
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: AssetProcessing
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: AssetFormats
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: ErrorTable
+      - EventBridgePutEventsPolicy:
+          EventBusName:
+            Ref: meb
+      - TextractDetectAnalyzePolicy: {}
+      - S3CrudPolicy:
+          BucketName:
+            Ref: S3txtractA
+      - S3CrudPolicy:
+          BucketName:
+            Ref: S3txtract
+      - S3CrudPolicy:
+          BucketName:
+            Ref: S3Assets
+      Events:
+        Trigger:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - ingestion
+              detail:
+                AssetType:
+                - pdf
+    Metadata:
+      SamResourceId: textractStart
+  textractComplete:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/textractComplete.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 10240
+      Timeout: 900
+      Description: Enrichment Engine-Complete Textract Processing and Produces Plain
+        Text Files
+      Environment:
+        Variables:
+          AssetTable:
+            Ref: Assets
+          AssetProcessingTable:
+            Ref: AssetProcessing
+          AssetAttributeTable:
+            Ref: AssetAttributes
+          AssetHistoryTable:
+            Ref: AssetHistory
+          AssetFormatsTable:
+            Ref: AssetFormats
+          ErrorTable:
+            Ref: ErrorTable
+          EventBus_Name:
+            Ref: meb
+          S3txtPlain:
+            Ref: S3txtPlain
+          S3txtPlainarn:
+            Fn::GetAtt:
+            - S3txtPlain
+            - Arn
+          S3txtract:
+            Ref: S3txtract
+          S3txtractA:
+            Ref: S3txtractA
+          S3Assets:
+            Ref: S3Assets
+          TextractSNSTopicArn:
+            Ref: AmazonTextractSNS
+          TextractASNSTopicArn:
+            Ref: AmazonTextractASNS
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: Assets
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: AssetProcessing
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: AssetFormats
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: ErrorTable
+      - EventBridgePutEventsPolicy:
+          EventBusName:
+            Ref: meb
+      - S3CrudPolicy:
+          BucketName:
+            Ref: S3txtractA
+      - S3CrudPolicy:
+          BucketName:
+            Ref: S3txtract
+      - S3CrudPolicy:
+          BucketName:
+            Ref: S3txtPlain
+      - SNSCrudPolicy:
+          TopicName:
+            Fn::GetAtt:
+            - AmazonTextractSNS
+            - TopicName
+      - SNSCrudPolicy:
+          TopicName:
+            Fn::GetAtt:
+            - AmazonTextractASNS
+            - TopicName
+      Events:
+        TextractSNSEvent1:
+          Type: SNS
+          Properties:
+            Topic:
+              Ref: AmazonTextractSNS
+        TextractASNSEvent2:
+          Type: SNS
+          Properties:
+            Topic:
+              Ref: AmazonTextractASNS
+    Metadata:
+      SamResourceId: textractComplete
+  rkImgDetectText:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/rkImgDetectText.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 128
+      Timeout: 120
+      Description: Enrichment Engine-Image Detect Text
+      Environment:
+        Variables:
+          AssetTable:
+            Ref: Assets
+          AssetAttributeTable:
+            Ref: AssetAttributes
+          AssetHistoryTable:
+            Ref: AssetHistory
+          AssetFormatsTable:
+            Ref: AssetFormats
+          ErrorTable:
+            Ref: ErrorTable
+          EventBus_Name:
+            Ref: meb
+          S3RkTxtDet:
+            Ref: S3RkTxtDet
+          S3Assets:
+            Ref: S3Assets
+          rkConfidence: 40
+          SearchTable:
+            Ref: SearchTable
+          SearchAggregateTable:
+            Ref: SearchAggregateTable
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: Assets
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: AssetFormats
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: SearchTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: SearchAggregateTable
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: ErrorTable
+      - EventBridgePutEventsPolicy:
+          EventBusName:
+            Ref: meb
+      - RekognitionDetectOnlyPolicy: {}
+      - S3CrudPolicy:
+          BucketName:
+            Ref: S3RkTxtDet
+      - S3ReadPolicy:
+          BucketName:
+            Ref: S3Assets
+      Events:
+        imgeventJpg:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - ingestion
+              detail:
+                AssetType:
+                - jpg
+        imgeventPng:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - ingestion
+              detail:
+                AssetType:
+                - png
+    Metadata:
+      SamResourceId: rkImgDetectText
+  rkImgDetectCelebrity:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/rkImgDetectCelebrity.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 128
+      Timeout: 120
+      Description: Enrichment Engine-Image Detect Celebrity
+      Environment:
+        Variables:
+          AssetTable:
+            Ref: Assets
+          AssetAttributeTable:
+            Ref: AssetAttributes
+          AssetHistoryTable:
+            Ref: AssetHistory
+          AssetFormatsTable:
+            Ref: AssetFormats
+          ErrorTable:
+            Ref: ErrorTable
+          EventBus_Name:
+            Ref: meb
+          S3RkCeleb:
+            Ref: S3RkCeleb
+          S3Assets:
+            Ref: S3Assets
+          rkConfidence: 40
+          SearchTable:
+            Ref: SearchTable
+          SearchAggregateTable:
+            Ref: SearchAggregateTable
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: Assets
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: AssetFormats
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: ErrorTable
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: SearchTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: SearchAggregateTable
+      - EventBridgePutEventsPolicy:
+          EventBusName:
+            Ref: meb
+      - AmazonRekognitionReadOnlyAccess
+      - S3CrudPolicy:
+          BucketName:
+            Ref: S3RkCeleb
+      - S3ReadPolicy:
+          BucketName:
+            Ref: S3Assets
+      Events:
+        imgeventJpg:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - ingestion
+              detail:
+                AssetType:
+                - jpg
+        imgeventPng:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - ingestion
+              detail:
+                AssetType:
+                - png
+    Metadata:
+      SamResourceId: rkImgDetectCelebrity
+  rkImgDetectLabels:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/rkImgDetectLabels.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 1024
+      Timeout: 360
+      Description: Enrichment Engine-Image Detect Labels
+      Environment:
+        Variables:
+          AssetTable:
+            Ref: Assets
+          AssetAttributeTable:
+            Ref: AssetAttributes
+          AssetHistoryTable:
+            Ref: AssetHistory
+          AssetFormatsTable:
+            Ref: AssetFormats
+          ErrorTable:
+            Ref: ErrorTable
+          EventBus_Name:
+            Ref: meb
+          S3RkLblDet:
+            Ref: S3RkLblDet
+          S3Assets:
+            Ref: S3Assets
+          rkConfidence: 40
+          SearchTable:
+            Ref: SearchTable
+          SearchAggregateTable:
+            Ref: SearchAggregateTable
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: Assets
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: AssetFormats
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: ErrorTable
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: SearchTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: SearchAggregateTable
+      - EventBridgePutEventsPolicy:
+          EventBusName:
+            Ref: meb
+      - RekognitionDetectOnlyPolicy: {}
+      - S3CrudPolicy:
+          BucketName:
+            Ref: S3RkLblDet
+      - S3ReadPolicy:
+          BucketName:
+            Ref: S3Assets
+      Events:
+        imgeventJpg:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - ingestion
+              detail:
+                AssetType:
+                - jpg
+        imgeventPng:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - ingestion
+              detail:
+                AssetType:
+                - png
+    Metadata:
+      SamResourceId: rkImgDetectLabels
+  rkImgDetectFaces:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/rkImgDetectFaces.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 1024
+      Timeout: 360
+      Description: Enrichment Engine-Image Detect Faces
+      Environment:
+        Variables:
+          AssetTable:
+            Ref: Assets
+          AssetAttributeTable:
+            Ref: AssetAttributes
+          AssetHistoryTable:
+            Ref: AssetHistory
+          AssetFormatsTable:
+            Ref: AssetFormats
+          ErrorTable:
+            Ref: ErrorTable
+          EventBus_Name:
+            Ref: meb
+          S3RkFacDet:
+            Ref: S3RkFacDet
+          S3Assets:
+            Ref: S3Assets
+          rkConfidence: 40
+          SearchTable:
+            Ref: SearchTable
+          SearchAggregateTable:
+            Ref: SearchAggregateTable
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: Assets
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: AssetFormats
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: SearchTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: SearchAggregateTable
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: ErrorTable
+      - EventBridgePutEventsPolicy:
+          EventBusName:
+            Ref: meb
+      - RekognitionDetectOnlyPolicy: {}
+      - S3CrudPolicy:
+          BucketName:
+            Ref: S3RkFacDet
+      - S3ReadPolicy:
+          BucketName:
+            Ref: S3Assets
+      Events:
+        imgeventJpg:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - ingestion
+              detail:
+                AssetType:
+                - jpg
+        imgeventPng:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - ingestion
+              detail:
+                AssetType:
+                - png
+    Metadata:
+      SamResourceId: rkImgDetectFaces
+  rkImgModeration:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/rkImgModeration.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 128
+      Timeout: 120
+      Description: Enrichment Engine-Image Moderation Detection
+      Environment:
+        Variables:
+          AssetTable:
+            Ref: Assets
+          AssetAttributeTable:
+            Ref: AssetAttributes
+          AssetHistoryTable:
+            Ref: AssetHistory
+          AssetFormatsTable:
+            Ref: AssetFormats
+          ErrorTable:
+            Ref: ErrorTable
+          EventBus_Name:
+            Ref: meb
+          S3RkMod:
+            Ref: S3RkMod
+          S3Assets:
+            Ref: S3Assets
+          rkConfidence: 40
+          SearchTable:
+            Ref: SearchTable
+          SearchAggregateTable:
+            Ref: SearchAggregateTable
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: Assets
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: AssetFormats
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: SearchTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: SearchAggregateTable
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: ErrorTable
+      - EventBridgePutEventsPolicy:
+          EventBusName:
+            Ref: meb
+      - RekognitionDetectOnlyPolicy: {}
+      - S3CrudPolicy:
+          BucketName:
+            Ref: S3RkMod
+      - S3ReadPolicy:
+          BucketName:
+            Ref: S3Assets
+      Events:
+        imgeventJpg:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - ingestion
+              detail:
+                AssetType:
+                - jpg
+        imgeventPng:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - ingestion
+              detail:
+                AssetType:
+                - png
+    Metadata:
+      SamResourceId: rkImgModeration
+  rkVidDetectFaces:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/video_rekognition_facedetection.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 1024
+      Timeout: 360
+      Description: Enrichment Engine-Video Detect Faces
+      Environment:
+        Variables:
+          AssetTable:
+            Ref: Assets
+          AssetAttributeTable:
+            Ref: AssetAttributes
+          AssetHistoryTable:
+            Ref: AssetHistory
+          AssetFormatsTable:
+            Ref: AssetFormats
+          ErrorTable:
+            Ref: ErrorTable
+          EventBus_Name:
+            Ref: meb
+          S3RkFacDet:
+            Ref: S3RkFacDet
+          S3Assets:
+            Ref: S3Assets
+          rkConfidence: 40
+          vid_rkfacedetectSNSarn:
+            Ref: AmazonRkFaceDetSNS
+          vid_rkfacedetectRolearn:
+            Fn::GetAtt:
+            - RekognitionAccess
+            - Arn
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: Assets
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: AssetFormats
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: ErrorTable
+      - EventBridgePutEventsPolicy:
+          EventBusName:
+            Ref: meb
+      - S3ReadPolicy:
+          BucketName:
+            Ref: S3Assets
+      - AmazonRekognitionFullAccess
+      - Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - iam:PassRole
+          - iam:GetRole
+          Resource:
+            Fn::GetAtt:
+            - RekognitionAccess
+            - Arn
+      Events:
+        videventMP4:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - ingestion
+              detail:
+                AssetType:
+                - mp4
+    Metadata:
+      SamResourceId: rkVidDetectFaces
+  rkVidDetectFacesComplete:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/video_rekognition_facedetectioncomplete.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 10240
+      Timeout: 900
+      Description: Enrichment Engine-Complete Video Face Detection via rekognition
+      Environment:
+        Variables:
+          AssetTable:
+            Ref: Assets
+          AssetProcessingTable:
+            Ref: AssetProcessing
+          AssetAttributeTable:
+            Ref: AssetAttributes
+          AssetHistoryTable:
+            Ref: AssetHistory
+          AssetFormatsTable:
+            Ref: AssetFormats
+          ErrorTable:
+            Ref: ErrorTable
+          EventBus_Name:
+            Ref: meb
+          S3RkFacDet:
+            Ref: S3RkFacDet
+          S3Assets:
+            Ref: S3Assets
+          rkConfidence: 40
+          vid_rkfacedetectSNSarn:
+            Ref: AmazonRkFaceDetSNS
+          vid_rkfacedetectRolearn:
+            Fn::GetAtt:
+            - RekognitionAccess
+            - Arn
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: Assets
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: AssetProcessing
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: AssetFormats
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: ErrorTable
+      - EventBridgePutEventsPolicy:
+          EventBusName:
+            Ref: meb
+      - S3CrudPolicy:
+          BucketName:
+            Ref: S3RkFacDet
+      - S3ReadPolicy:
+          BucketName:
+            Ref: S3Assets
+      - SNSCrudPolicy:
+          TopicName:
+            Fn::GetAtt:
+            - AmazonRkFaceDetSNS
+            - TopicName
+      - AmazonRekognitionReadOnlyAccess
+      Events:
+        rkvdfacdetSNSEvent1:
+          Type: SNS
+          Properties:
+            Topic:
+              Ref: AmazonRkFaceDetSNS
+    Metadata:
+      SamResourceId: rkVidDetectFacesComplete
+  dominantlanguageStart:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/dominantlanguageStart.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 128
+      Timeout: 120
+      Description: Enrichment Engine-Starts Comprehend Async Detection of Language
+      Environment:
+        Variables:
+          AssetTable:
+            Ref: Assets
+          AssetProcessingTable:
+            Ref: AssetProcessing
+          AssetAttributeTable:
+            Ref: AssetAttributes
+          AssetHistoryTable:
+            Ref: AssetHistory
+          AssetFormatsTable:
+            Ref: AssetFormats
+          ErrorTable:
+            Ref: ErrorTable
+          EventBus_Name:
+            Ref: meb
+          S3txtPlain:
+            Ref: S3txtPlain
+          S3txtPlainarn:
+            Fn::GetAtt:
+            - S3txtPlain
+            - Arn
+          S3txtract:
+            Ref: S3txtract
+          S3txtractA:
+            Ref: S3txtractA
+          S3Assets:
+            Ref: S3Assets
+          S3NlpLang:
+            Ref: S3NlpLang
+          ComprehendAccessarn:
+            Fn::GetAtt:
+            - ComprehendAccess
+            - Arn
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action: sts:AssumeRole
+          Principal:
+            Service:
+            - comprehend.amazonaws.com
+            - s3.amazonaws.com
+            - lambda.amazonaws.com
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: Assets
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: AssetProcessing
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: AssetFormats
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: ErrorTable
+      - EventBridgePutEventsPolicy:
+          EventBusName:
+            Ref: meb
+      - S3CrudPolicy:
+          BucketName:
+            Ref: S3txtract
+      - S3CrudPolicy:
+          BucketName:
+            Ref: S3NlpLang
+      - ComprehendFullAccess
+      - Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - iam:PassRole
+          - iam:GetRole
+          Resource:
+            Fn::GetAtt:
+            - ComprehendAccess
+            - Arn
+      Events:
+        txtingestion:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - ingestion
+              detail:
+                AssetType:
+                - txt
+        txtalternate:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - alternateformat
+              detail:
+                ProcessExtension:
+                - txt
+    Metadata:
+      SamResourceId: dominantlanguageStart
+  dominantlanguageComplete:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/dominantlanguageComplete.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 1024
+      Timeout: 120
+      Description: Enrichment Engine-Completes Comprehend Async Detection of Language
+      Environment:
+        Variables:
+          AssetTable:
+            Ref: Assets
+          AssetProcessingTable:
+            Ref: AssetProcessing
+          AssetAttributeTable:
+            Ref: AssetAttributes
+          AssetHistoryTable:
+            Ref: AssetHistory
+          AssetFormatsTable:
+            Ref: AssetFormats
+          ErrorTable:
+            Ref: ErrorTable
+          EventBus_Name:
+            Ref: meb
+          S3NlpLang:
+            Ref: S3NlpLang
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action: sts:AssumeRole
+          Principal:
+            Service:
+            - comprehend.amazonaws.com
+            - s3.amazonaws.com
+            - lambda.amazonaws.com
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: Assets
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: ErrorTable
+      - EventBridgePutEventsPolicy:
+          EventBusName:
+            Ref: meb
+      - S3CrudPolicy:
+          BucketName:
+            Ref: S3NlpLang
+      - ComprehendFullAccess
+      - Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - iam:PassRole
+          - iam:GetRole
+          Resource:
+            Fn::GetAtt:
+            - ComprehendAccess
+            - Arn
+      Events:
+        dominantcompleteEvent:
+          Type: SQS
+          Properties:
+            BatchSize: 1
+            Enabled: true
+            MaximumBatchingWindowInSeconds: 5
+            Queue:
+              Fn::GetAtt:
+              - comprehendlangQueue
+              - Arn
+    Metadata:
+      SamResourceId: dominantlanguageComplete
+  comprehendStart:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/comprehendStart.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 512
+      Timeout: 120
+      Description: Enrichment Engine-Starts Comprehend NER Async
+      Environment:
+        Variables:
+          AssetTable:
+            Ref: Assets
+          AssetProcessingTable:
+            Ref: AssetProcessing
+          AssetAttributeTable:
+            Ref: AssetAttributes
+          AssetHistoryTable:
+            Ref: AssetHistory
+          AssetFormatsTable:
+            Ref: AssetFormats
+          ErrorTable:
+            Ref: ErrorTable
+          EventBus_Name:
+            Ref: meb
+          S3Assets:
+            Ref: S3Assets
+          S3NlpNer:
+            Ref: S3NlpNer
+          S3txtPlain:
+            Ref: S3txtPlain
+          S3txtPlainarn:
+            Fn::GetAtt:
+            - S3txtPlain
+            - Arn
+          S3txtract:
+            Ref: S3txtract
+          S3txtractA:
+            Ref: S3txtractA
+          ComprehendAccessarn:
+            Fn::GetAtt:
+            - ComprehendAccess
+            - Arn
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action: sts:AssumeRole
+          Principal:
+            Service:
+            - comprehend.amazonaws.com
+            - s3.amazonaws.com
+            - lambda.amazonaws.com
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: Assets
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: AssetFormats
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: ErrorTable
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: AssetProcessing
+      - EventBridgePutEventsPolicy:
+          EventBusName:
+            Ref: meb
+      - S3CrudPolicy:
+          BucketName:
+            Ref: S3NlpNer
+      - S3ReadPolicy:
+          BucketName:
+            Ref: S3txtPlain
+      - S3ReadPolicy:
+          BucketName:
+            Ref: S3Assets
+      - S3ReadPolicy:
+          BucketName:
+            Ref: S3txtract
+      - ComprehendFullAccess
+      - Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - iam:PassRole
+          - iam:GetRole
+          Resource:
+            Fn::GetAtt:
+            - ComprehendAccess
+            - Arn
+      Events:
+        Trigger:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - enrichments
+              detail:
+                ProcessType:
+                - dominantlanguage
+    Metadata:
+      SamResourceId: comprehendStart
+  comprehendComplete:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/comprehendComplete.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 5012
+      Timeout: 900
+      Description: Enrichment Engine-Complete Comprehend NER
+      Environment:
+        Variables:
+          AssetTable:
+            Ref: Assets
+          AssetProcessingTable:
+            Ref: AssetProcessing
+          AssetAttributeTable:
+            Ref: AssetAttributes
+          AssetHistoryTable:
+            Ref: AssetHistory
+          AssetFormatsTable:
+            Ref: AssetFormats
+          ErrorTable:
+            Ref: ErrorTable
+          EventBus_Name:
+            Ref: meb
+          S3NlpNer:
+            Ref: S3NlpNer
+          ComprehendAccessarn:
+            Fn::GetAtt:
+            - ComprehendAccess
+            - Arn
+          rkConfidence: 60
+          SearchTable:
+            Ref: SearchTable
+          SearchAggregateTable:
+            Ref: SearchAggregateTable
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action: sts:AssumeRole
+          Principal:
+            Service:
+            - comprehend.amazonaws.com
+            - s3.amazonaws.com
+            - lambda.amazonaws.com
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: Assets
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: ErrorTable
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: SearchTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: SearchAggregateTable
+      - EventBridgePutEventsPolicy:
+          EventBusName:
+            Ref: meb
+      - S3CrudPolicy:
+          BucketName:
+            Ref: S3NlpNer
+      - ComprehendFullAccess
+      - Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - iam:PassRole
+          - iam:GetRole
+          Resource:
+            Fn::GetAtt:
+            - ComprehendAccess
+            - Arn
+      Events:
+        nlpcompleteEvent:
+          Type: SQS
+          Properties:
+            BatchSize: 1
+            Enabled: true
+            MaximumBatchingWindowInSeconds: 5
+            Queue:
+              Fn::GetAtt:
+              - comprehendnlpQueue
+              - Arn
+    Metadata:
+      SamResourceId: comprehendComplete
+  translateStart:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/translateStart.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 128
+      Timeout: 120
+      Description: Enrichment Engine-Starts Translate ASync
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      Events:
+        Trigger:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - translationStart
+    Metadata:
+      SamResourceId: translateStart
+  translateComplete:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/translateComplete.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 10240
+      Timeout: 900
+      Description: Enrichment Engine-Complete the translation
+      Policies:
+      - AWSLambdaBasicExecutionRole
+    Metadata:
+      SamResourceId: translateComplete
+  rekognitionStart:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/rekognitionStart.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 128
+      Timeout: 120
+      Description: Enrichment Engine-Starts Rekognition Async
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      Events:
+        Trigger:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - ingestion
+              detail:
+                type:
+                - pdf
+    Metadata:
+      SamResourceId: rekognitionStart
+  rekognitionComplete:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/rekognitionComplete.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 128
+      Timeout: 120
+      Description: Enrichment Engine-Complete Rekognition Run.
+      Policies:
+      - AWSLambdaBasicExecutionRole
+    Metadata:
+      SamResourceId: rekognitionComplete
+  transcribeStart:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/transcribeStart.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 128
+      Timeout: 120
+      Description: Enrichment Engine-Starts Transcription Async
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      Events:
+        Trigger:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - audio
+              detail:
+                type:
+                - wav
+    Metadata:
+      SamResourceId: transcribeStart
+  transcribeComplete:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/transcribeComplete.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 128
+      Timeout: 120
+      Description: Enrichment Engine-Complete Transcribe Run.
+      Policies:
+      - AWSLambdaBasicExecutionRole
+    Metadata:
+      SamResourceId: transcribeComplete
+  elementalConvertStart:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/elementalConvertStart.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 128
+      Timeout: 120
+      Description: Enrichment Engine-Starts Conversion of media formats. Async
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      Events:
+        Trigger:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - mediaConversion
+              detail:
+                type:
+                - pdf
+    Metadata:
+      SamResourceId: elementalConvertStart
+  elementalConvertComplete:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/elementalConvertComplete.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 128
+      Timeout: 120
+      Description: Enrichment Engine-Completes the processing of media type conversions.
+      Policies:
+      - AWSLambdaBasicExecutionRole
+    Metadata:
+      SamResourceId: elementalConvertComplete
+  loadAnalyticsStream:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/loadAnalyticsStream.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 128
+      Timeout: 120
+      Description: Enrichment Engine-Loads events onto the analytics data stream for
+        other systems to process
+      Policies:
+      - AWSLambdaBasicExecutionRole
+    Metadata:
+      SamResourceId: loadAnalyticsStream
+  loadKendraIndex:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/loadKendraIndex.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 1024
+      Timeout: 120
+      Description: Enrichment Engine-Loads Kendra index as records are received.
+      Environment:
+        Variables:
+          AssetTable:
+            Ref: Assets
+          AssetFormatsTable:
+            Ref: AssetFormats
+          ErrorTable:
+            Ref: ErrorTable
+          EventBus_Name:
+            Ref: meb
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      - S3CrudPolicy:
+          BucketName: '*'
+      - EventBridgePutEventsPolicy:
+          EventBusName:
+            Ref: meb
+      Events:
+        orgevent:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - ingestion
+              detail:
+                AssetType:
+                - pdf
+                - txt
+        altevent:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - alternateformat
+              detail:
+                ProcessExtension:
+                - pdf
+    Metadata:
+      SamResourceId: loadKendraIndex
+  loadKendraMetadata:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/loadKendraMetadata.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 5012
+      Timeout: 360
+      Description: Enrichment Engine-Loads Kendra index's metadata as records are
+        received.
+      Environment:
+        Variables:
+          EventBus_Name:
+            Ref: meb
+          dtFaceConfidence: 80
+          srchFaceConfidence: 80
+          dtCelebConfidence: 80
+          dtLabelConfidence: 80
+          dtImgCapConfidence: 80
+          dtTextConfidence: 80
+          dtModerationConfidence: 80
+          nlpConfidence: 92
+          nlpMaxLabelCount: 190
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      - S3CrudPolicy:
+          BucketName: '*'
+      - EventBridgePutEventsPolicy:
+          EventBusName:
+            Ref: meb
+      Events:
+        enrichevent:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - enrichments
+    Metadata:
+      SamResourceId: loadKendraMetadata
+  loadElasticSearch:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/loadElasticSearch.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 128
+      Timeout: 120
+      Description: Enrichment Engine-Loads ElasticSearch as records are received.
+      Policies:
+      - AWSLambdaBasicExecutionRole
+    Metadata:
+      SamResourceId: loadElasticSearch
+  dynamodbEnrichments:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://aws-quickstart-sar/de081b3da10871bde278119553d9c712
+      Handler: src/handlers/dynamodbEnrichments.LambdaHandler
+      Runtime: python3.8
+      MemorySize: 128
+      Timeout: 120
+      Description: Enrichment Engine-Near Real Time Enrichment Storage
+      Environment:
+        Variables:
+          AssetTable:
+            Ref: Assets
+          AssetEnrichmentsTable:
+            Ref: AssetEnrichments
+          SearchTable:
+            Ref: SearchTable
+          SearchAggregateTable:
+            Ref: SearchAggregateTable
+          EventBus_Name:
+            Ref: meb
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: Assets
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: AssetEnrichments
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: SearchTable
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: SearchAggregateTable
+      - DynamoDBWritePolicy:
+          TableName:
+            Ref: ErrorTable
+      Events:
+        enrichevent:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName:
+              Ref: meb
+            Pattern:
+              source:
+              - gdit.me
+              detail-type:
+              - enrichments
+    Metadata:
+      SamResourceId: dynamodbEnrichments
+  S3txtract:
+    DeletionPolicy: Delete
+    Type: AWS::S3::Bucket
+    Properties:
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      SamResourceId: S3txtract
+  S3txtractA:
+    DeletionPolicy: Delete
+    Type: AWS::S3::Bucket
+    Properties:
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      SamResourceId: S3txtractA
+  S3txtPlain:
+    DeletionPolicy: Delete
+    Type: AWS::S3::Bucket
+    Properties:
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      SamResourceId: S3txtPlain
+  S3NlpTop:
+    DeletionPolicy: Delete
+    Type: AWS::S3::Bucket
+    Properties:
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      SamResourceId: S3NlpTop
+  S3NlpKp:
+    DeletionPolicy: Delete
+    Type: AWS::S3::Bucket
+    Properties:
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      SamResourceId: S3NlpKp
+  S3Kendra:
+    DeletionPolicy: Delete
+    Type: AWS::S3::Bucket
+    Properties:
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      SamResourceId: S3Kendra
+  S3Assets:
+    DeletionPolicy: Delete
+    Type: AWS::S3::Bucket
+    Properties:
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      SamResourceId: S3Assets
+  S3Translate:
+    DeletionPolicy: Delete
+    Type: AWS::S3::Bucket
+    Properties:
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      SamResourceId: S3Translate
+  S3Transcribe:
+    DeletionPolicy: Delete
+    Type: AWS::S3::Bucket
+    Properties:
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      SamResourceId: S3Transcribe
+  S3RkTxtDet:
+    DeletionPolicy: Delete
+    Type: AWS::S3::Bucket
+    Properties:
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      SamResourceId: S3RkTxtDet
+  S3RkSegDet:
+    DeletionPolicy: Delete
+    Type: AWS::S3::Bucket
+    Properties:
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      SamResourceId: S3RkSegDet
+  S3RkPplTrc:
+    DeletionPolicy: Delete
+    Type: AWS::S3::Bucket
+    Properties:
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      SamResourceId: S3RkPplTrc
+  S3RkLblDet:
+    DeletionPolicy: Delete
+    Type: AWS::S3::Bucket
+    Properties:
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      SamResourceId: S3RkLblDet
+  S3RkFacSrch:
+    DeletionPolicy: Delete
+    Type: AWS::S3::Bucket
+    Properties:
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      SamResourceId: S3RkFacSrch
+  S3RkFacDet:
+    DeletionPolicy: Delete
+    Type: AWS::S3::Bucket
+    Properties:
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      SamResourceId: S3RkFacDet
+  S3RkCeleb:
+    DeletionPolicy: Delete
+    Type: AWS::S3::Bucket
+    Properties:
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      SamResourceId: S3RkCeleb
+  S3RkMod:
+    DeletionPolicy: Delete
+    Type: AWS::S3::Bucket
+    Properties:
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      SamResourceId: S3RkMod
+  S3AzureDescrImg:
+    DeletionPolicy: Delete
+    Type: AWS::S3::Bucket
+    Properties:
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      SamResourceId: S3AzureDescrImg
+  Assets:
+    DeletionPolicy: Delete
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: AssetId
+        AttributeType: S
+      KeySchema:
+      - AttributeName: AssetId
+        KeyType: HASH
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
+    Metadata:
+      SamResourceId: Assets
+  AssetProcessing:
+    DeletionPolicy: Delete
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: TTL
+        Enabled: true
+      AttributeDefinitions:
+      - AttributeName: AssetId
+        AttributeType: S
+      - AttributeName: ProcessId
+        AttributeType: S
+      KeySchema:
+      - AttributeName: AssetId
+        KeyType: HASH
+      - AttributeName: ProcessId
+        KeyType: RANGE
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
+    Metadata:
+      SamResourceId: AssetProcessing
+  AssetAttributes:
+    DeletionPolicy: Delete
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: AssetId
+        AttributeType: S
+      - AttributeName: AttributeType
+        AttributeType: S
+      KeySchema:
+      - AttributeName: AssetId
+        KeyType: HASH
+      - AttributeName: AttributeType
+        KeyType: RANGE
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
+    Metadata:
+      SamResourceId: AssetAttributes
+  AssetEnrichments:
+    DeletionPolicy: Delete
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: AssetId
+        AttributeType: S
+      - AttributeName: Timestamp
+        AttributeType: N
+      KeySchema:
+      - AttributeName: AssetId
+        KeyType: HASH
+      - AttributeName: Timestamp
+        KeyType: RANGE
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
+    Metadata:
+      SamResourceId: AssetEnrichments
+  AssetHistory:
+    DeletionPolicy: Delete
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: AssetId
+        AttributeType: S
+      KeySchema:
+      - AttributeName: AssetId
+        KeyType: HASH
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
+    Metadata:
+      SamResourceId: AssetHistory
+  AssetFormats:
+    DeletionPolicy: Delete
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: AssetId
+        AttributeType: S
+      - AttributeName: FormatType
+        AttributeType: S
+      KeySchema:
+      - AttributeName: AssetId
+        KeyType: HASH
+      - AttributeName: FormatType
+        KeyType: RANGE
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
+    Metadata:
+      SamResourceId: AssetFormats
+  ErrorTable:
+    DeletionPolicy: Delete
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: AssetId
+        AttributeType: S
+      - AttributeName: Source
+        AttributeType: S
+      KeySchema:
+      - AttributeName: AssetId
+        KeyType: HASH
+      - AttributeName: Source
+        KeyType: RANGE
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
+    Metadata:
+      SamResourceId: ErrorTable
+  Collections:
+    DeletionPolicy: Delete
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: CollectionId
+        AttributeType: S
+      KeySchema:
+      - AttributeName: CollectionId
+        KeyType: HASH
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
+    Metadata:
+      SamResourceId: Collections
+  CollectionSubscribers:
+    DeletionPolicy: Delete
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: SubscriberId
+        AttributeType: S
+      - AttributeName: CollectionId
+        AttributeType: S
+      KeySchema:
+      - AttributeName: SubscriberId
+        KeyType: HASH
+      - AttributeName: CollectionId
+        KeyType: RANGE
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
+    Metadata:
+      SamResourceId: CollectionSubscribers
+  SearchTable:
+    DeletionPolicy: Delete
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: Term
+        AttributeType: S
+      - AttributeName: Context
+        AttributeType: S
+      - AttributeName: AssetId
+        AttributeType: S
+      - AttributeName: Confidence
+        AttributeType: N
+      KeySchema:
+      - AttributeName: Term
+        KeyType: HASH
+      - AttributeName: Context
+        KeyType: RANGE
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
+      GlobalSecondaryIndexes:
+      - IndexName: AssetIdTerm
+        KeySchema:
+        - AttributeName: AssetId
+          KeyType: HASH
+        - AttributeName: Term
+          KeyType: RANGE
+        Projection:
+          ProjectionType: ALL
+      - IndexName: TermConfidence
+        KeySchema:
+        - AttributeName: Term
+          KeyType: HASH
+        - AttributeName: Confidence
+          KeyType: RANGE
+        Projection:
+          ProjectionType: ALL
+    Metadata:
+      SamResourceId: SearchTable
+  SearchAggregateTable:
+    DeletionPolicy: Delete
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: AssetId
+        AttributeType: S
+      - AttributeName: ProcessType
+        AttributeType: S
+      - AttributeName: Context
+        AttributeType: S
+      KeySchema:
+      - AttributeName: AssetId
+        KeyType: HASH
+      - AttributeName: ProcessType
+        KeyType: RANGE
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
+      GlobalSecondaryIndexes:
+      - IndexName: ContextAssetId
+        KeySchema:
+        - AttributeName: Context
+          KeyType: HASH
+        - AttributeName: AssetId
+          KeyType: RANGE
+        Projection:
+          ProjectionType: ALL
+    Metadata:
+      SamResourceId: SearchAggregateTable
+  ingestQueue:
+    DeletionPolicy: Delete
+    Type: AWS::SQS::Queue
+    Metadata:
+      SamResourceId: ingestQueue
+  ingestQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks:
+          - EPolicyWildcardPrincipal
+          - EIAMPolicyActionWildcard
+      SamResourceId: ingestQueuePolicy
+    Properties:
+      Queues:
+      - Ref: ingestQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Id: IngestID
+        Statement:
+        - Sid: ingestSID
+          Effect: Allow
+          Principal: '*'
+          Action: sqs:*
+          Resource:
+            Fn::GetAtt:
+            - ingestQueue
+            - Arn
+  S3ingest:
+    DeletionPolicy: Delete
+    Type: AWS::S3::Bucket
+    DependsOn: ingestQueuePolicy
+    Properties:
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      NotificationConfiguration:
+        QueueConfigurations:
+        - Event: s3:ObjectCreated:*
+          Queue:
+            Fn::GetAtt:
+            - ingestQueue
+            - Arn
+    Metadata:
+      SamResourceId: S3ingest
+  comprehendlangQueue:
+    DeletionPolicy: Delete
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 120
+    Metadata:
+      SamResourceId: comprehendlangQueue
+  comprehendlangQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks:
+          - EPolicyWildcardPrincipal
+          - EIAMPolicyActionWildcard
+      SamResourceId: comprehendlangQueuePolicy
+    Properties:
+      Queues:
+      - Ref: comprehendlangQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Id: LangID
+        Statement:
+        - Sid: LangSID
+          Effect: Allow
+          Principal: '*'
+          Action: sqs:*
+          Resource:
+            Fn::GetAtt:
+            - comprehendlangQueue
+            - Arn
+  S3NlpLang:
+    DeletionPolicy: Delete
+    Type: AWS::S3::Bucket
+    DependsOn: comprehendlangQueuePolicy
+    Properties:
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      NotificationConfiguration:
+        QueueConfigurations:
+        - Event: s3:ObjectCreated:*
+          Queue:
+            Fn::GetAtt:
+            - comprehendlangQueue
+            - Arn
+          Filter:
+            S3Key:
+              Rules:
+              - Name: suffix
+                Value: .gz
+    Metadata:
+      SamResourceId: S3NlpLang
+  comprehendnlpQueue:
+    DeletionPolicy: Delete
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 900
+    Metadata:
+      SamResourceId: comprehendnlpQueue
+  comprehendnlpQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks:
+          - EPolicyWildcardPrincipal
+          - EIAMPolicyActionWildcard
+      SamResourceId: comprehendnlpQueuePolicy
+    Properties:
+      Queues:
+      - Ref: comprehendnlpQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Id: nlpID
+        Statement:
+        - Sid: nlpSID
+          Effect: Allow
+          Principal: '*'
+          Action: sqs:*
+          Resource:
+            Fn::GetAtt:
+            - comprehendnlpQueue
+            - Arn
+  S3NlpNer:
+    DeletionPolicy: Delete
+    Type: AWS::S3::Bucket
+    DependsOn: comprehendnlpQueuePolicy
+    Properties:
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      NotificationConfiguration:
+        QueueConfigurations:
+        - Event: s3:ObjectCreated:*
+          Queue:
+            Fn::GetAtt:
+            - comprehendnlpQueue
+            - Arn
+          Filter:
+            S3Key:
+              Rules:
+              - Name: suffix
+                Value: .gz
+    Metadata:
+      SamResourceId: S3NlpNer
+  AmazonTextractSNS:
+    Type: AWS::SNS::Topic
+    Metadata:
+      SamResourceId: AmazonTextractSNS
+  AmazonTextractASNS:
+    Type: AWS::SNS::Topic
+    Metadata:
+      SamResourceId: AmazonTextractASNS
+  AmazonRkFaceDetSNS:
+    Type: AWS::SNS::Topic
+    Metadata:
+      SamResourceId: AmazonRkFaceDetSNS
+  TextractSNSRl:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          Effect: Allow
+          Principal:
+            Service:
+            - textract.amazonaws.com
+            - cloudformation.amazonaws.com
+            - codepipeline.amazonaws.com
+            - sns.amazonaws.com
+            - lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - Fn::Sub: arn:${AWS::Partition}:iam::aws:policy/AmazonS3FullAccess
+      - Fn::Sub: arn:${AWS::Partition}:iam::aws:policy/AmazonTextractFullAccess
+      - Fn::Sub: arn:${AWS::Partition}:iam::aws:policy/AmazonSNSFullAccess
+    Metadata:
+      SamResourceId: TextractSNSRl
+  ComprehendAccess:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          Effect: Allow
+          Principal:
+            Service:
+            - comprehend.amazonaws.com
+            - cloudformation.amazonaws.com
+            - codepipeline.amazonaws.com
+            - lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - Fn::Sub: arn:${AWS::Partition}:iam::aws:policy/AmazonS3FullAccess
+      - Fn::Sub: arn:${AWS::Partition}:iam::aws:policy/ComprehendFullAccess
+    Metadata:
+      SamResourceId: ComprehendAccess
+  RekognitionAccess:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          Effect: Allow
+          Principal:
+            Service:
+            - rekognition.amazonaws.com
+            - cloudformation.amazonaws.com
+            - codepipeline.amazonaws.com
+            - lambda.amazonaws.com
+            - sns.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - Fn::Sub: arn:${AWS::Partition}:iam::aws:policy/AmazonS3FullAccess
+      - Fn::Sub: arn:${AWS::Partition}:iam::aws:policy/AmazonRekognitionFullAccess
+      - Fn::Sub: arn:${AWS::Partition}:iam::aws:policy/AmazonSNSFullAccess
+    Metadata:
+      SamResourceId: RekognitionAccess
+Outputs:
+  eventbridgename:
+    Description: AWS Event Bridge Name
+    Value:
+      Ref: meb
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-eventbridgename
+  eventbridgearn:
+    Description: AWS Event Bridge arn
+    Value:
+      Fn::GetAtt:
+      - meb
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-eventbridgearn
+  s3ingestname:
+    Description: S3 Bucket Name for Ingestion of Content
+    Value:
+      Ref: S3ingest
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3ingestname
+  s3ingestarn:
+    Description: S3 Bucket Arn for Ingestion of Content
+    Value:
+      Fn::GetAtt:
+      - S3ingest
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3ingestarn
+  s3txtractname:
+    Description: S3 Bucket Name for AWS Textract Raw Data
+    Value:
+      Ref: S3txtract
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3txtractname
+  s3txtractarn:
+    Description: S3 Bucket Arn for AWS Textract Raw Data
+    Value:
+      Fn::GetAtt:
+      - S3txtract
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3txtractarn
+  s3txtractaname:
+    Description: S3 Bucket Name for AWS Textract analysis raw data
+    Value:
+      Ref: S3txtractA
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3txtractaname
+  s3txtractaarn:
+    Description: S3 Bucket Arn for AWS Textract analysis raw data
+    Value:
+      Fn::GetAtt:
+      - S3txtractA
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3txtractaarn
+  s3txtplainname:
+    Description: S3 Bucket Name for AWS plain text
+    Value:
+      Ref: S3txtPlain
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3txtplainname
+  s3txtplainarn:
+    Description: S3 Bucket Arn for AWS plain text
+    Value:
+      Fn::GetAtt:
+      - S3txtPlain
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3txtplainarn
+  s3nlptopname:
+    Description: S3 Bucket Name for raw AWS Comprehend data topic
+    Value:
+      Ref: S3NlpTop
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3nlptopname
+  s3nlptoparn:
+    Description: S3 Bucket Arn for raw AWS Comprend data topic
+    Value:
+      Fn::GetAtt:
+      - S3NlpTop
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3nlptoparn
+  s3nlpkpname:
+    Description: S3 Bucket Name for raw AWS Comprehend data key phrases
+    Value:
+      Ref: S3NlpKp
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3nlpkpname
+  s3nlpkparn:
+    Description: S3 Bucket Arn for raw AWS Comprehend data key phrases
+    Value:
+      Fn::GetAtt:
+      - S3NlpKp
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3nlpkparn
+  s3kendraname:
+    Description: S3 Bucket Name for AWS Kendra
+    Value:
+      Ref: S3Kendra
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3kendraname
+  s3kendraarn:
+    Description: S3 Bucket Arn for AWS Kendra
+    Value:
+      Fn::GetAtt:
+      - S3Kendra
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3kendraarn
+  s3assetsname:
+    Description: S3 Bucket Name for assets
+    Value:
+      Ref: S3Assets
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3assetsname
+  s3assetsarn:
+    Description: S3 Bucket Arn for assets
+    Value:
+      Fn::GetAtt:
+      - S3Assets
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3assetsarn
+  s3translatename:
+    Description: S3 Bucket Name for AWS Translate
+    Value:
+      Ref: S3Translate
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3translatename
+  s3translatearn:
+    Description: S3 Bucket Arn for AWS Translate
+    Value:
+      Fn::GetAtt:
+      - S3Translate
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3translatearn
+  s3transcribename:
+    Description: S3 Bucket Name for AWS Transcribe
+    Value:
+      Ref: S3Transcribe
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3transcribename
+  s3transcribearn:
+    Description: S3 Bucket Arn for AWS Transcribe
+    Value:
+      Fn::GetAtt:
+      - S3Transcribe
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3transcribearn
+  s3rktxtdetname:
+    Description: S3 Bucket Name for AWS Rekognition text detection
+    Value:
+      Ref: S3RkTxtDet
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3rktxtdetname
+  s3rktxtdetarn:
+    Description: S3 Bucket Arn for AWS Rekognition text detection
+    Value:
+      Fn::GetAtt:
+      - S3RkTxtDet
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3rktxtdetarn
+  s3rksegdetname:
+    Description: S3 Bucket Name for AWS Rekognition video segment detection
+    Value:
+      Ref: S3RkSegDet
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3rksegdetname
+  s3rksegdetarn:
+    Description: S3 Bucket Arn for AWS Rekognition video segment detection
+    Value:
+      Fn::GetAtt:
+      - S3RkSegDet
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3rksegdetarn
+  s3rkppltrcname:
+    Description: S3 Bucket Name for AWS Rekognition video people tracking
+    Value:
+      Ref: S3RkPplTrc
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3rkppltrcname
+  s3rkppltrcarn:
+    Description: S3 Bucket Arn for AWS Rekognition video people tracking
+    Value:
+      Fn::GetAtt:
+      - S3RkPplTrc
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3rkppltrcarn
+  s3rklbldetname:
+    Description: S3 Bucket Name for AWS Rekognition label detection
+    Value:
+      Ref: S3RkLblDet
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3rklbldetname
+  s3rklbldetarn:
+    Description: S3 Bucket Arn for AWS Rekognition label detection
+    Value:
+      Fn::GetAtt:
+      - S3RkLblDet
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3rklbldetarn
+  s3rkfacsrchname:
+    Description: S3 Bucket Name for AWS Rekognition face search
+    Value:
+      Ref: S3RkFacSrch
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3rkfacsrchname
+  s3rkfacsrcharn:
+    Description: S3 Bucket Arn for AWS Rekognition face search
+    Value:
+      Fn::GetAtt:
+      - S3RkFacSrch
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3rkfacsrcharn
+  s3rkfacdetname:
+    Description: S3 Bucket Name for AWS Rekognition face detection
+    Value:
+      Ref: S3RkFacDet
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3rkfacdetname
+  s3rkfacdetarn:
+    Description: S3 Bucket Arn for AWS Rekognition face detection
+    Value:
+      Fn::GetAtt:
+      - S3RkFacDet
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3rkfacedetarn
+  s3rkcelebname:
+    Description: S3 Bucket Name for AWS Rekognition celebrity
+    Value:
+      Ref: S3RkCeleb
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3rkcelebrityname
+  s3rkcelebrityarn:
+    Description: S3 Bucket Arn for AWS Rekognition celebrity
+    Value:
+      Fn::GetAtt:
+      - S3RkCeleb
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3rkcelebrityarn
+  s3rkmoddetname:
+    Description: S3 Bucket Name for AWS Rekognition moderation detection
+    Value:
+      Ref: S3RkMod
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3rkmoddetname
+  s3rkmoddetarn:
+    Description: S3 Bucket Arn for AWS Rekognition moderation detection
+    Value:
+      Fn::GetAtt:
+      - S3RkMod
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3rkmoddetarn
+  s3azdescrimgname:
+    Description: S3 Bucket Name for Azure Describe Image
+    Value:
+      Ref: S3AzureDescrImg
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3azdescrimgname
+  s3azdescrimgarn:
+    Description: S3 Bucket Arn for Azure Describe Image
+    Value:
+      Fn::GetAtt:
+      - S3AzureDescrImg
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-s3azdescrimgarn
+  dbassetsname:
+    Description: DynamoDB Table Name for Assets
+    Value:
+      Ref: Assets
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbassetsname
+  dbassetsarn:
+    Description: DynamoDB Table arn for Assets
+    Value:
+      Fn::GetAtt:
+      - Assets
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbassetsarn
+  dbassetsstreamarn:
+    Description: DynamoDB Table stream arn for Assets
+    Value:
+      Fn::GetAtt:
+      - Assets
+      - StreamArn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbassetsstreamarn
+  dbassetprocessingname:
+    Description: DynamoDB Table Name for Asset Processing
+    Value:
+      Ref: AssetProcessing
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbassetprocessingname
+  dbassetprocessingarn:
+    Description: DynamoDB Table arn for Asset Processing
+    Value:
+      Fn::GetAtt:
+      - AssetProcessing
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbassetprocessingarn
+  dbassetprocessingstreamarn:
+    Description: DynamoDB Table stream arn for Asset Processing
+    Value:
+      Fn::GetAtt:
+      - AssetProcessing
+      - StreamArn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbassetprocessingstreamarn
+  dbassetattributesname:
+    Description: DynamoDB Table Name for Asset Attributes
+    Value:
+      Ref: AssetAttributes
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbassetattributesname
+  dbassetattributesarn:
+    Description: DynamoDB Table arn for Asset Attributes
+    Value:
+      Fn::GetAtt:
+      - AssetAttributes
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbassetattributesarn
+  dbassetattributesstreamarn:
+    Description: DynamoDB Table stream arn for Asset Attributes
+    Value:
+      Fn::GetAtt:
+      - AssetAttributes
+      - StreamArn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbassetattributesstreamarn
+  dbassetenrichmentsname:
+    Description: DynamoDB Table Name for Asset Enrichments
+    Value:
+      Ref: AssetEnrichments
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbassetenrichmentsname
+  dbassetenrichmentsarn:
+    Description: DynamoDB Table arn for Asset Enrichments
+    Value:
+      Fn::GetAtt:
+      - AssetEnrichments
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbassetenrichmentsarn
+  dbassetenrichmentsstreamarn:
+    Description: DynamoDB Table stream arn for Asset Enrichments
+    Value:
+      Fn::GetAtt:
+      - AssetEnrichments
+      - StreamArn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbassetenrichmentsstreamarn
+  dbassethistoryname:
+    Description: DynamoDB Table Name for Asset History
+    Value:
+      Ref: AssetHistory
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbassethistoryname
+  dbassethistoryarn:
+    Description: DynamoDB Table arn for Asset History
+    Value:
+      Fn::GetAtt:
+      - AssetHistory
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbassethistoryarn
+  dbassethistorystreamarn:
+    Description: DynamoDB Table stream arn for Asset History
+    Value:
+      Fn::GetAtt:
+      - AssetHistory
+      - StreamArn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbassethistorystreamarn
+  dbassetformatsname:
+    Description: DynamoDB Table Name for Asset Formats
+    Value:
+      Ref: AssetFormats
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbassetformatsname
+  dbassetformatsarn:
+    Description: DynamoDB Table arn for Asset Formats
+    Value:
+      Fn::GetAtt:
+      - AssetFormats
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbassetformatsarn
+  dbassetformatsstreamarn:
+    Description: DynamoDB Table stream arn for Asset Formats
+    Value:
+      Fn::GetAtt:
+      - AssetFormats
+      - StreamArn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbassetformatsstreamarn
+  dberrorname:
+    Description: DynamoDB Table Name for Errors
+    Value:
+      Ref: ErrorTable
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dberrorname
+  dberrorarn:
+    Description: DynamoDB Table arn for Errors
+    Value:
+      Fn::GetAtt:
+      - ErrorTable
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dberrorsarn
+  dberrorstreamarn:
+    Description: DynamoDB Table stream arn for Errors
+    Value:
+      Fn::GetAtt:
+      - ErrorTable
+      - StreamArn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dberrorstreamarn
+  dbcollectionsname:
+    Description: DynamoDB Table Name for Collections
+    Value:
+      Ref: Collections
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbcollectionsname
+  dbcollectionsarn:
+    Description: DynamoDB Table arn for Collections
+    Value:
+      Fn::GetAtt:
+      - Collections
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbcollectionsarn
+  dbcollectionsstreamarn:
+    Description: DynamoDB Table stream arn for Collections
+    Value:
+      Fn::GetAtt:
+      - Collections
+      - StreamArn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbcollectionsstreamarn
+  dbcollectionsubscribersname:
+    Description: DynamoDB Table Name for CollectionSubscribers
+    Value:
+      Ref: CollectionSubscribers
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbcollectionsubscribersname
+  dbcollectionsubscribersarn:
+    Description: DynamoDB Table arn for CollectionSubscribers
+    Value:
+      Fn::GetAtt:
+      - CollectionSubscribers
+      - Arn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbcollectionsubscribersarn
+  dbcollectionsubscribersstreamarn:
+    Description: DynamoDB Table stream arn for CollectionSubscribers
+    Value:
+      Fn::GetAtt:
+      - CollectionSubscribers
+      - StreamArn
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-dbcollectionsubscribersstreamarn
