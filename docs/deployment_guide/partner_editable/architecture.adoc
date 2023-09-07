@@ -1,28 +1,36 @@
 :xrefstyle: short
 
-Deploying this Partner Solution with default parameters builds the following {partner-product-short-name} environment in the
+Deploying this Quick Start with default parameters builds the following {partner-product-short-name} environment in the
 AWS Cloud.
 
 // Replace this example diagram with your own. Follow our wiki guidelines: https://w.amazon.com/bin/view/AWS_Quick_Starts/Process_for_PSAs/#HPrepareyourarchitecturediagram. Upload your source PowerPoint file to the GitHub {deployment name}/docs/images/ directory in its repository.
 
 [#architecture1]
-.Partner Solution architecture for {partner-product-short-name} on AWS
+.Quick Start architecture for {partner-product-short-name} on AWS
 image::../docs/deployment_guide/images/architecture_diagram.png[Architecture]
 
-As shown in <<architecture1>>, this Partner Solution sets up the following:
+As shown in <<architecture1>>, this Quick Start sets up the following:
 
-* A highly available architecture that spans two Availability Zones.*
-* A virtual private cloud (VPC) configured with public and private subnets, according to AWS
-best practices, to provide you with your own virtual network on AWS.*
-* In the public subnets:
-** Managed network address translation (NAT) gateways to allow outbound
-internet access for resources in the private subnets.*
-** A Linux bastion host in an Auto Scaling group to allow inbound Secure
-Shell (SSH) access to Amazon Elastic Compute Cloud (Amazon EC2) instances in public and private subnets.*
-* In the private subnets:
-** <item>.
-** <item>.
-// Add bullet points for any additional components that are included in the deployment. Ensure that the additional components are shown in the architecture diagram. End each bullet with a period.
-* <describe any additional components>.
+//* AWS AppSync
+//-Future Development: AppSync is not utilized in the Luna AI 2021 or Mission AI 2022. AppSync is part of the advanced, NextGen GUI experience. AppSync may be looked at for Mission AI 2023.
 
-[.small]#* The template that deploys this Partner Solution into an existing VPC skips the components marked by asterisks and prompts you for your existing VPC configuration.#
+* Data ingestion services to ingest and queue user multimedia data for enrichment.
+** Amazon Simple Queue Service (Amazon SQS) for a data-ingestion event queue.
+** Amazon Simple Notification Service (Amazon SNS) to manage asynchronous messaging between Amazon EventBridge and enrichment services.
+** AWS Lambda to do the following:
+*** Poll the data-ingestion event queue and post events to EventBridge.
+*** Process data flowing from EventBridge to enrichment services and between enrichment services.
+** EventBridge to route ingested data to enrichment services.
+* Data enrichment services to do the following:
+** Amazon Textract to extract text from PDF and image files.
+** Amazon Comprehend to extract entities such as key phrases, places, names, organizations, quantities, and events.
+** Amazon Rekognition to identify objects, people, text, scenes, and activities in images and videos.
+** Amazon Transcribe to convert audio input into text.
+** Amazon Translate to translate text documents.
+** AWS Elemental MediaConvert to transcode video files.
+* Data storage and streaming services to do the following:
+** Amazon DynamoDB to store system data, system metadata, and media asset metadata, and keep a record of changes to database tables.
+** Amazon Simple Storage Service (Amazon S3) for landing zone and enriched data storage.
+** Amazon Kinesis Data Streams to stream enriched data to Amazon Kendra and AWS Lake Formation.
+* Amazon Kendra for searching enriched data with natural language processing and advanced search algorithms.
+* Lake Formation to set up, secure, and manage a data lake.
