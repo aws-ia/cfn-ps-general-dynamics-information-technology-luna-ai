@@ -1,6 +1,6 @@
 
 project:
-  name: quickstart-general-dynamics-information-technology-luna-ai
+  name: cfn-ps-general-dynamics-information-technology-luna-ai
   owner: quickstart-eng@amazon.com
   #marketplace-ami: true
   s3_regional_buckets: true
